@@ -3,12 +3,36 @@ const test = require('node:test');
 const assert = require('node:assert');
 const Game = require('../app/game.js');
 
-test('no duplicate or anagram names (every scramble has exactly one answer)', () => {
-  const seen = new Map();
-  for (const n of Game.NAMES) {
-    const key = n.toLowerCase().split('').sort().join('');
-    assert.ok(!seen.has(key), n + ' clashes with ' + seen.get(key));
-    seen.set(key, n);
+test('no duplicate or anagram names in any category (every question has exactly one answer)', () => {
+  for (const [id, cat] of Object.entries(Game.CATEGORIES)) {
+    const seen = new Map();
+    for (const item of cat.items) {
+      const key = item.name.toLowerCase().split('').sort().join('');
+      assert.ok(!seen.has(key), id + ': ' + item.name + ' clashes with ' + seen.get(key));
+      seen.set(key, item.name);
+    }
+  }
+});
+
+test('every category produces valid questions with rising levels and no early repeats', () => {
+  for (const [id, cat] of Object.entries(Game.CATEGORIES)) {
+    const g = Game.createGame('cat-seed', id);
+    const used = new Set();
+    for (let i = 0; i < 50; i++) {
+      const q = g.question(i);
+      const answer = q.choices[q.answer];
+      assert.strictEqual(new Set(q.choices).size, 4, id);
+      assert.strictEqual(q.level, Game.levelFor(i));
+      assert.ok(!used.has(answer), id + ' repeats ' + answer + ' at question ' + (i + 1));
+      used.add(answer);
+      if (cat.clue) {
+        assert.ok(q.clue.length > 10 && !q.scrambled);
+        assert.ok(!q.clue.toLowerCase().includes(answer.toLowerCase()), 'clue gives away ' + answer);
+      } else {
+        assert.strictEqual(q.scrambled.split('').sort().join(''), answer.toUpperCase().split('').sort().join(''));
+        assert.notStrictEqual(q.scrambled, answer.toUpperCase());
+      }
+    }
   }
 });
 

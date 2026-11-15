@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var KEY = 'bns-session';
 
-  var session = null;      // { room, pid, choices: [] } - only kept for the length of one round
+  var session = null;      // { room, pid, choices: [], roundStart } - this device's place in the room
   var myName = '';
   var game = null;         // question generator for this round's seed
   var round = null;        // { startAt, endAt }
@@ -14,6 +14,9 @@
   var qIndex = 0, score = 0, streak = 0, locked = false, spectating = false;
   var sending = false, dirty = false;
   var lastCount = null, lastTickSecond = null, lastQrRoom = null;
+  var lastState = null, resultsFor = null, lobbySig = '', knownTags = {};
+  var CATS = BibleGame.CATEGORIES, TEAMS = BibleGame.TEAMS;
+  var HOME_SUB = 'Bible characters, books, places and “Who am I?” — 120 seconds a round. Most right wins! 🏆';
 
   /* ---------- tiny helpers ---------- */
   function show(name) {
@@ -113,7 +116,7 @@
     $('btn-create').hidden = $('or').hidden = !!linkRoom;
     $('home-sub').textContent = linkRoom
       ? 'You\'re invited to game ' + linkRoom + '! Type your full name to jump in.'
-      : 'Unscramble Bible names. 120 seconds. Most right wins! 🏆';
+      : HOME_SUB;
     $('home-err').textContent = message || '';
     setBusy(false);
     show('home');
@@ -159,7 +162,7 @@
   }
   function startPolling() {
     stopLoops();
-    round = null; game = null; spectating = false; lastCount = null;
+    round = null; game = null; spectating = false; lastCount = null; lastState = null; resultsFor = null; lobbySig = ''; knownTags = {};
     poll();
     tickTimer = setInterval(tick, 100);
   }
@@ -169,8 +172,8 @@
     api('state', { room: mine.room, pid: mine.pid }).then(function (st) {
       if (session !== mine) return;
       onState(st);
-      var wait = st.phase === 'lobby' ? 1500 : st.phase === 'playing' ? 2500 : 1000;
-      if (st.phase !== 'final') pollTimer = setTimeout(poll, wait);
+      var wait = st.phase === 'lobby' ? 1500 : st.phase === 'playing' ? 2500 : st.phase === 'final' ? 2000 : 1000;
+      pollTimer = setTimeout(poll, wait);
     }).catch(function (e) {
       if (session !== mine) return;
       if (e.code === 'gone' || e.code === 'notin' || e.code === 'room') {
@@ -181,15 +184,27 @@
     });
   }
   function onState(st) {
-    if (st.phase === 'lobby') return renderLobby(st);
-    if (!round) {
+    lastState = st;
+    if (st.phase === 'lobby') {
+      // Between rounds: last round's scores are gone and everyone is back in the lobby.
+      round = null; game = null;
+      if (session.choices.length) { session.choices = []; save(); }
+      if (screen === 'results') return; // keep showing the scoreboard until this player taps on
+      return renderLobby(st);
+    }
+    if (!round || round.startAt !== st.startAt) {
       round = { startAt: st.startAt, endAt: st.endAt };
-      game = BibleGame.createGame(st.seed);
+      game = BibleGame.createGame(st.seed, st.category);
+      if (session.roundStart !== st.startAt) { session.roundStart = st.startAt; session.choices = []; save(); }
       // Rejoining after a refresh: carry on only if this device still has its answers.
       spectating = st.myAnswered > session.choices.length;
+      lastCount = null;
+      var cat = CATS[st.category] || CATS.characters;
+      $('count-cat').textContent = cat.emoji + ' ' + cat.label;
+      $('prompt').textContent = cat.prompt;
     }
     if (st.phase === 'playing') renderRank(st.players);
-    if (st.phase === 'final') return renderResults(st.players);
+    if (st.phase === 'final' && resultsFor !== round.startAt) return renderResults(st);
     tick();
   }
 
@@ -198,7 +213,7 @@
     if (!round) return;
     var t = now();
     if (t < round.startAt) {
-      if (screen !== 'count') show('count');
+      if (screen !== 'count') { stopConfetti(); show('count'); }
       var n = Math.min(3, Math.ceil((round.startAt - t) / 1000));
       if (n !== lastCount) {
         lastCount = n;
@@ -216,7 +231,7 @@
       $('hud-time').classList.toggle('hurry', secs <= 10);
       $('bar-fill').style.transform = 'scaleX(' + (left / (round.endAt - round.startAt)) + ')';
       if (secs <= 10 && secs !== lastTickSecond) { lastTickSecond = secs; sfx.tick(); }
-    } else if (screen !== 'tally' && screen !== 'results') {
+    } else if (screen !== 'tally' && screen !== 'results' && resultsFor !== round.startAt) {
       sfx.end();
       showTally('Counting everyone\'s points…');
       sendAnswers();
@@ -245,34 +260,90 @@
         $('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
       } catch (e) { $('qr').hidden = true; }
     }
-    // Update the list in place so names don't flicker each time the lobby refreshes.
-    var list = $('lobby-players');
-    var before = list.children.length;
-    var existing = {};
-    Array.prototype.forEach.call(list.children, function (li) { existing[li.dataset.tag] = li; });
-    st.players.forEach(function (p) {
-      var li = existing[p.tag];
-      delete existing[p.tag];
-      var sig = (p.host ? 'h' : '') + (st.hostIsMe ? 'k' : '');
-      if (li && li.dataset.sig === sig) return;
-      if (!li) { li = el('li', p.me ? 'me' : ''); li.dataset.tag = p.tag; list.appendChild(li); }
-      li.dataset.sig = sig;
-      li.textContent = (p.host ? '👑 ' : '') + p.name + (p.me ? ' (you)' : '');
-      if (st.hostIsMe && !p.me) {
-        var k = el('button', 'kick', '✕');
-        k.setAttribute('aria-label', 'Remove ' + p.name);
-        k.onclick = function () { api('leave', { room: session.room, pid: session.pid, tag: p.tag }).catch(function () {}); li.remove(); };
-        li.appendChild(k);
-      }
-    });
-    Object.keys(existing).forEach(function (tag) { existing[tag].remove(); });
-    if (before && st.players.length > before) sfx.join();
+    renderSettings(st);
+    // Redraw the roster only when something actually changed, so names don't flicker.
+    var sig = JSON.stringify([st.hostIsMe, st.mode, st.teamCount, st.players.map(function (p) { return [p.tag, p.team, p.host, p.away]; })]);
     var n = st.players.length;
+    if (sig !== lobbySig) {
+      var joined = st.players.some(function (p) { return !knownTags[p.tag]; });
+      if (lobbySig && joined) sfx.join();
+      lobbySig = sig;
+      var box = $('lobby-players');
+      box.textContent = '';
+      var pill = function (p) {
+        var li = el('li', (p.me ? 'me' : '') + (p.away ? ' away' : '') + (knownTags[p.tag] ? '' : ' new'),
+          (p.host ? '👑 ' : '') + p.name + (p.me ? ' (you)' : '') + (p.away ? ' 💤' : ''));
+        knownTags[p.tag] = true;
+        if (st.hostIsMe && !p.me) {
+          var k = el('button', 'kick', '✕');
+          k.setAttribute('aria-label', 'Remove ' + p.name);
+          k.onclick = function () { api('leave', { room: session.room, pid: session.pid, tag: p.tag }).catch(function () {}); li.remove(); };
+          li.appendChild(k);
+        }
+        return li;
+      };
+      if (st.mode === 'teams') {
+        var me = st.players.filter(function (p) { return p.me; })[0];
+        for (var t = 0; t < st.teamCount; t++) (function (t) {
+          var members = st.players.filter(function (p) { return p.team === t; });
+          var sec = el('div', 'team');
+          sec.style.setProperty('--tc', TEAMS[t].color);
+          var head = el('div', 'team-head');
+          head.appendChild(el('span', '', TEAMS[t].emoji + ' ' + TEAMS[t].name));
+          head.appendChild(el('span', 'n', members.length + (members.length === 1 ? ' player' : ' players')));
+          if (me && me.team === t) head.appendChild(el('span', 'mine', 'Your team'));
+          else {
+            var j = el('button', '', 'Join');
+            j.onclick = function () { api('team', { room: session.room, pid: session.pid, team: t }).then(repoll).catch(function (e) { toast(e.message); }); };
+            head.appendChild(j);
+          }
+          sec.appendChild(head);
+          var ul = el('ul', 'players');
+          members.forEach(function (p) { ul.appendChild(pill(p)); });
+          sec.appendChild(ul);
+          box.appendChild(sec);
+        })(t);
+      } else {
+        var list = el('ul', 'players');
+        st.players.forEach(function (p) { list.appendChild(pill(p)); });
+        box.appendChild(list);
+      }
+    }
     $('lobby-count').textContent = n + (n === 1 ? ' player' : ' players') + ' in';
     $('btn-start').hidden = !st.hostIsMe;
     $('lobby-status').textContent = st.hostIsMe
-      ? 'You\'re the host 👑 Press start once everyone has joined'
+      ? 'You\'re the host 👑 Pick the game, then press start once everyone has joined'
       : 'Waiting for the host to start the game';
+  }
+  function repoll() { clearTimeout(pollTimer); poll(); }
+  // Host sees the controls; everyone else sees what the host picked.
+  function renderSettings(st) {
+    var cat = CATS[st.category] || CATS.characters;
+    $('settings').hidden = !st.hostIsMe;
+    $('lobby-summary').hidden = st.hostIsMe;
+    $('lobby-summary').textContent = cat.emoji + ' ' + cat.label + '  ·  ' +
+      (st.mode === 'teams' ? '🤝 ' + st.teamCount + ' teams' : '🙋 Individuals');
+    var catBox = $('set-cat');
+    if (!catBox.children.length) {
+      Object.keys(CATS).forEach(function (id) {
+        var b = el('button', '', CATS[id].emoji + ' ' + CATS[id].label);
+        b.type = 'button';
+        b.dataset.cat = id;
+        b.onclick = function () { configure({ category: id }); };
+        catBox.appendChild(b);
+      });
+      Array.prototype.forEach.call($('set-mode').children, function (b) { b.onclick = function () { configure({ mode: b.dataset.mode }); }; });
+      Array.prototype.forEach.call($('set-count').children, function (b) { b.onclick = function () { configure({ teamCount: Number(b.dataset.count) }); }; });
+    }
+    Array.prototype.forEach.call(catBox.children, function (b) { b.classList.toggle('on', b.dataset.cat === st.category); });
+    Array.prototype.forEach.call($('set-mode').children, function (b) { b.classList.toggle('on', b.dataset.mode === st.mode); });
+    Array.prototype.forEach.call($('set-count').children, function (b) { b.classList.toggle('on', Number(b.dataset.count) === st.teamCount); });
+    $('set-count-wrap').hidden = st.mode !== 'teams';
+  }
+  function configure(change) {
+    if (!session) return;
+    api('config', { room: session.room, pid: session.pid, category: change.category, mode: change.mode, teamCount: change.teamCount })
+      .then(repoll).catch(function (e) { toast(e.message); });
   }
   $('btn-start').onclick = function () {
     $('btn-start').disabled = true;
@@ -305,13 +376,18 @@
     $('hud-level').textContent = q.level;
     var tiles = $('tiles');
     tiles.textContent = '';
-    tiles.style.setProperty('--n', q.scrambled.length);
-    q.scrambled.split('').forEach(function (ch, i) {
-      var t = el('span', 'tile', ch);
-      t.style.animationDelay = (i * 35) + 'ms';
-      tiles.appendChild(t);
-    });
-    tiles.setAttribute('aria-label', q.scrambled.split('').join(' '));
+    if (q.clue) {
+      tiles.appendChild(el('div', 'clue', q.clue));
+      tiles.removeAttribute('aria-label');
+    } else {
+      tiles.style.setProperty('--n', q.scrambled.length);
+      q.scrambled.split('').forEach(function (ch, i) {
+        var t = el('span', 'tile', ch);
+        t.style.animationDelay = (i * 35) + 'ms';
+        tiles.appendChild(t);
+      });
+      tiles.setAttribute('aria-label', q.scrambled.split('').join(' '));
+    }
     var box = $('choices');
     box.textContent = '';
     q.choices.forEach(function (name, i) {
@@ -384,31 +460,67 @@
     var mine = Math.max(me.score, score);
     var ahead = players.filter(function (p) { return !p.me && p.score > mine; }).length;
     chip.hidden = false;
-    chip.textContent = (ahead === 0 ? '🥇 ' : '') + '#' + (ahead + 1) + ' of ' + players.length;
+    chip.textContent = (lastState && lastState.mode === 'teams' ? TEAMS[me.team].emoji + ' ' : ahead === 0 ? '🥇 ' : '') + '#' + (ahead + 1) + ' of ' + players.length;
   }
 
   /* ---------- results ---------- */
-  function renderResults(players) {
+  function renderResults(st) {
     var mine = session;
-    stopLoops();
-    players = players.slice().sort(function (a, b) { return b.score - a.score || a.answered - b.answered; });
+    var teams = st.mode === 'teams';
+    resultsFor = round.startAt;
+    var players = st.players.slice().sort(function (a, b) { return b.score - a.score || a.answered - b.answered; });
     var rank = 0;
     players.forEach(function (p, i) { if (i === 0 || p.score < players[i - 1].score) rank = i + 1; p.rank = rank; });
     var me = players.filter(function (p) { return p.me; })[0];
+    var medals = ['🥇', '🥈', '🥉'];
+    var title = me && me.rank === 1 ? '🏆 You won!' : 'Final Scores';
+    var line = me ? 'You finished #' + me.rank + ' of ' + players.length + ' with ' + me.score + ' points (' + me.correct + ' right).' : '';
 
-    $('res-title').textContent = me && me.rank === 1 ? '🏆 You won!' : 'Final Scores';
-    $('res-me').textContent = me
-      ? 'You finished #' + me.rank + ' of ' + players.length + ' with ' + me.score + ' points (' + me.correct + ' right).'
-      : '';
+    // Team standings: ranked by average points per player, so uneven teams stay fair.
+    var board = $('team-board');
+    board.hidden = !teams;
+    board.textContent = '';
+    if (teams) {
+      var table = [];
+      for (var t = 0; t < st.teamCount; t++) {
+        var members = players.filter(function (p) { return p.team === t; });
+        if (!members.length) continue;
+        var active = members.filter(function (p) { return p.answered > 0; });
+        if (!active.length) active = members;
+        var total = members.reduce(function (sum, p) { return sum + p.score; }, 0);
+        table.push({ t: t, size: members.length, total: total, avg: Math.round(total / active.length * 10) / 10 });
+      }
+      table.sort(function (a, b) { return b.avg - a.avg || b.total - a.total; });
+      table.forEach(function (row, i) { row.rank = i > 0 && row.avg === table[i - 1].avg ? table[i - 1].rank : i + 1; });
+      table.forEach(function (row, i) {
+        var r = el('div', 'team-row' + (row.rank > 1 ? ' lost' : ''));
+        r.style.setProperty('--tc', TEAMS[row.t].color);
+        r.style.animationDelay = (i * 120) + 'ms';
+        r.appendChild(el('span', 'temoji', row.rank <= 3 ? medals[row.rank - 1] : String(row.rank)));
+        var name = el('span', 'tname', TEAMS[row.t].emoji + ' ' + TEAMS[row.t].name);
+        name.appendChild(el('small', '', row.size + (row.size === 1 ? ' player' : ' players') + ' · ' + row.total + ' points in total'));
+        r.appendChild(name);
+        var sc = el('span', 'tscore', String(row.avg));
+        sc.appendChild(el('small', '', 'avg per player'));
+        r.appendChild(sc);
+        board.appendChild(r);
+      });
+      var winners = table.filter(function (row) { return row.rank === 1; });
+      var myRow = me && table.filter(function (row) { return row.t === me.team; })[0];
+      title = winners.length > 1 ? '🤝 It\'s a tie!' : '🏆 ' + TEAMS[winners[0].t].emoji + ' ' + TEAMS[winners[0].t].name + ' win!';
+      if (myRow) line = 'Your team came #' + myRow.rank + ' of ' + table.length + '. ' + line;
+    }
+    $('res-title').textContent = title;
+    $('res-me').textContent = line;
+
     var podium = $('podium');
     podium.textContent = '';
-    var medals = ['🥇', '🥈', '🥉'];
     [1, 0, 2].forEach(function (i) {
       var p = players[i];
       if (!p) return;
       var d = el('div', 'pod p' + (i + 1));
       d.appendChild(el('div', 'medal', medals[i]));
-      d.appendChild(el('div', 'pname', p.name));
+      d.appendChild(el('div', 'pname', (teams ? TEAMS[p.team].emoji + ' ' : '') + p.name));
       var block = el('div', 'block', String(p.score));
       block.appendChild(el('small', '', 'points'));
       d.appendChild(block);
@@ -420,7 +532,7 @@
       var li = el('li', p.me ? 'me' : '');
       li.style.animationDelay = Math.min(i * 60, 1500) + 'ms';
       li.appendChild(el('span', 'rank', p.rank <= 3 ? medals[p.rank - 1] : String(p.rank)));
-      li.appendChild(el('span', 'rname', p.name + (p.me ? ' (you)' : '')));
+      li.appendChild(el('span', 'rname', (teams ? TEAMS[p.team].emoji + ' ' : '') + p.name + (p.me ? ' (you)' : '')));
       li.appendChild(el('span', 'rmeta', p.correct + '/' + p.answered + ' right'));
       li.appendChild(el('span', 'rscore', String(p.score)));
       list.appendChild(li);
@@ -429,12 +541,25 @@
     $('s-results').scrollTop = 0;
     sfx.fanfare();
     confetti();
-    // Tell the server we have the scores; once every player has, the round is erased.
+    // Tell the server we have the scores; once every player has, they are erased.
     api('seen', { room: mine.room, pid: mine.pid }).catch(function () {});
-    forget();
   }
-  $('btn-again').onclick = function () { linkRoom = ''; history.replaceState(null, '', '/'); goHome(); };
+  // Same players, new round: back to the lobby (or straight into the round if it already started).
+  $('btn-again').onclick = function () {
+    stopConfetti();
+    if (lastState && lastState.phase === 'lobby') { lobbySig = ''; renderLobby(lastState); }
+    else showTally('Setting up the next round…');
+  };
+  $('btn-quit').onclick = function () {
+    var s = session;
+    if (s) api('leave', { room: s.room, pid: s.pid }).catch(function () {});
+    linkRoom = ''; history.replaceState(null, '', '/');
+    stopConfetti();
+    goHome();
+  };
 
+  var confettiRun = 0;
+  function stopConfetti() { confettiRun++; var c = $('confetti'); c.getContext('2d').clearRect(0, 0, c.width, c.height); }
   function confetti() {
     var c = $('confetti'), ctx = c.getContext('2d');
     var w = c.width = innerWidth, h = c.height = innerHeight;
@@ -444,8 +569,9 @@
       bits.push({ x: Math.random() * w, y: -20 - Math.random() * h * 0.6, r: 5 + Math.random() * 7, c: colors[i % colors.length],
         vx: -1.5 + Math.random() * 3, vy: 2 + Math.random() * 4, a: Math.random() * 6, va: -0.2 + Math.random() * 0.4 });
     }
-    var began = Date.now();
+    var began = Date.now(), run = ++confettiRun;
     (function frame() {
+      if (run !== confettiRun) return;
       ctx.clearRect(0, 0, w, h);
       if (Date.now() - began > 6000 || screen !== 'results') return;
       bits.forEach(function (b) {

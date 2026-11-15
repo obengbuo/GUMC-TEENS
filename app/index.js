@@ -1,7 +1,7 @@
 'use strict';
 /* Bible Name Scramble - single Lambda behind a Function URL.
-   Serves the web app and a tiny JSON API. Game rooms live in DynamoDB only while a
-   game is in progress and are deleted as soon as everyone has seen the scores. */
+   Serves the web app and a tiny JSON API. Scores live in DynamoDB only for the length of a
+   round and are erased once everyone has seen them; the room itself goes when players leave. */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -23,7 +23,10 @@ const ROUND_MS = Number(process.env.ROUND_MS) || Game.ROUND_MS; // 120 seconds
 const COUNTDOWN_MS = Number(process.env.COUNTDOWN_MS) || 5000; // 3-2-1 before the clock starts
 const GRACE_MS = 2500;            // lets last-second answers arrive before scores lock
 const LOBBY_LIFE_MS = 45 * 60000; // an unstarted lobby disappears after 45 minutes
-const RESULTS_LIFE_MS = 2 * 60000; // scores are wiped at most 2 minutes after a round
+const RESET_AFTER_MS = Number(process.env.RESET_AFTER_MS) || 60000; // scores are erased at most 1 minute after a round ends...
+const RESULTS_LIFE_MS = 2 * 60000; // ...and the whole room after 2 minutes if nobody is still there
+const BETWEEN_ROUNDS_MS = 20 * 60000; // a room waiting for its next round disappears after 20 idle minutes
+const AWAY_MS = 20000;
 const HOST_AWAY_MS = 20000;
 const MAX_PLAYERS = 80;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -119,11 +122,43 @@ async function sweepExpired() {
   }
 }
 
-function playerItem(room, pid, name, now) {
+function playerItem(room, pid, name, now, team) {
   return {
-    pk: room, sk: 'P#' + pid, tag: token(4), name, score: 0, correct: 0, answered: 0,
+    pk: room, sk: 'P#' + pid, tag: token(4), name, team: team || 0, score: 0, correct: 0, answered: 0,
     joinedAt: now, lastSeen: now, seen: false, ttl: Math.floor(now / 1000) + 3 * 3600
   };
+}
+
+// The emptiest team, so new arrivals keep teams balanced.
+function smallestTeam(players, teamCount) {
+  const sizes = new Array(teamCount).fill(0);
+  players.forEach((p) => { if (p.team < teamCount) sizes[p.team]++; });
+  return sizes.indexOf(Math.min(...sizes));
+}
+
+// After a round: erase every score and put the same players back in the lobby for the next one.
+async function resetRoom(data) {
+  const { meta, players } = data;
+  const now = Date.now();
+  try {
+    await ddb.send(new UpdateCommand({
+      TableName: TABLE, Key: { pk: meta.pk, sk: 'META' },
+      UpdateExpression: 'SET #s = :lobby, seed = :seed, #e = :exp REMOVE startAt, endAt',
+      ConditionExpression: '#s = :started AND endAt = :end',
+      ExpressionAttributeNames: { '#s': 'state', '#e': 'exp' },
+      ExpressionAttributeValues: {
+        ':lobby': 'lobby', ':started': 'started', ':end': meta.endAt, ':seed': token(8), ':exp': now + BETWEEN_ROUNDS_MS
+      }
+    }));
+  } catch (e) {
+    if (isConditionFail(e)) return; // someone else already reset it
+    throw e;
+  }
+  await Promise.all(players.map((p) => ddb.send(new UpdateCommand({
+    TableName: TABLE, Key: { pk: p.pk, sk: p.sk },
+    UpdateExpression: 'SET score = :z, correct = :z, answered = :z, seen = :f',
+    ConditionExpression: 'attribute_exists(pk)', ExpressionAttributeValues: { ':z': 0, ':f': false }
+  })).catch(() => {})));
 }
 
 function phaseOf(meta, now) {
@@ -149,6 +184,7 @@ const api = {
           TableName: TABLE,
           Item: {
             pk: room, sk: 'META', state: 'lobby', hostId: pid, seed: token(8), createdAt: now,
+            category: 'characters', mode: 'solo', teamCount: 2,
             exp: now + LOBBY_LIFE_MS, ttl: Math.floor(now / 1000) + 3 * 3600
           },
           ConditionExpression: 'attribute_not_exists(pk)'
@@ -173,27 +209,34 @@ const api = {
       throw new ApiError(409, 'dupe', 'Someone with that name is already in. Add a middle initial?');
     }
     const pid = token(12);
-    await ddb.send(new PutCommand({ TableName: TABLE, Item: playerItem(room, pid, name, Date.now()) }));
+    const team = meta.mode === 'teams' ? smallestTeam(players, meta.teamCount) : 0;
+    await ddb.send(new PutCommand({ TableName: TABLE, Item: playerItem(room, pid, name, Date.now(), team) }));
     return { room, pid };
   },
 
   async state(body) {
     const room = cleanRoom(body.room);
     const pid = cleanPid(body.pid);
-    const { meta, players } = await requireRoom(room);
+    let data = await requireRoom(room);
+    const now = Date.now();
+    // Scores never outlive the round by more than a minute, even if someone closed their phone.
+    if (data.meta.state === 'started' && now > data.meta.endAt + GRACE_MS + RESET_AFTER_MS) {
+      await resetRoom(data);
+      data = await requireRoom(room);
+    }
+    const { meta, players } = data;
     const me = players.find((p) => p.sk === 'P#' + pid);
     if (!me) throw new ApiError(403, 'notin', 'You are not in this game.');
-    const now = Date.now();
     const phase = phaseOf(meta, now);
 
+    if (now - me.lastSeen > 5000) {
+      me.lastSeen = now;
+      await ddb.send(new UpdateCommand({
+        TableName: TABLE, Key: { pk: room, sk: me.sk }, UpdateExpression: 'SET lastSeen = :n',
+        ConditionExpression: 'attribute_exists(pk)', ExpressionAttributeValues: { ':n': now }
+      })).catch(() => {});
+    }
     if (phase === 'lobby') {
-      if (now - me.lastSeen > 5000) {
-        me.lastSeen = now;
-        await ddb.send(new UpdateCommand({
-          TableName: TABLE, Key: { pk: room, sk: me.sk }, UpdateExpression: 'SET lastSeen = :n',
-          ConditionExpression: 'attribute_exists(pk)', ExpressionAttributeValues: { ':n': now }
-        })).catch(() => {});
-      }
       // If the host wandered off, the longest-waiting active player takes over.
       const host = players.find((p) => p.sk === 'P#' + meta.hostId);
       if (!host || now - host.lastSeen > HOST_AWAY_MS) {
@@ -210,9 +253,10 @@ const api = {
 
     const out = {
       phase, now, room, hostIsMe: meta.hostId === pid,
+      category: meta.category, mode: meta.mode, teamCount: meta.teamCount,
       players: players.map((p) => ({
-        tag: p.tag, name: p.name, score: p.score, correct: p.correct, answered: p.answered,
-        me: p.sk === me.sk, host: p.sk === 'P#' + meta.hostId
+        tag: p.tag, name: p.name, team: p.team, score: p.score, correct: p.correct, answered: p.answered,
+        me: p.sk === me.sk, host: p.sk === 'P#' + meta.hostId, away: now - p.lastSeen > AWAY_MS
       }))
     };
     if (phase !== 'lobby') {
@@ -260,7 +304,7 @@ const api = {
     if (!meta || meta.state !== 'started' || now < meta.startAt - 500 || now > meta.endAt + GRACE_MS) {
       throw new ApiError(409, 'closed', 'The round is not running.');
     }
-    const result = Game.createGame(meta.seed).score(choices);
+    const result = Game.createGame(meta.seed, meta.category).score(choices);
     try {
       await ddb.send(new UpdateCommand({
         TableName: TABLE, Key: { pk: room, sk: 'P#' + pid },
@@ -274,45 +318,94 @@ const api = {
     return { ok: true };
   },
 
-  // Each player confirms they have the final scores; once everyone has, the room is erased.
+  // Each player confirms they have the final scores; once everyone has, the scores are erased
+  // and the same players are back in the lobby, ready for another round.
   async seen(body) {
     const room = cleanRoom(body.room);
     const pid = cleanPid(body.pid);
     const data = await loadRoom(room);
-    if (!data) return { ok: true, wiped: true };
+    if (!data || data.meta.state === 'lobby') return { ok: true, wiped: true };
     if (phaseOf(data.meta, Date.now()) !== 'final') throw new ApiError(409, 'early', 'Scores are not final yet.');
     const me = data.players.find((p) => p.sk === 'P#' + pid);
     if (!me) throw new ApiError(403, 'notin', 'You are not in this game.');
-    me.seen = true;
-    if (data.players.every((p) => p.seen)) {
-      await deleteItems(data.items);
-      return { ok: true, wiped: true };
-    }
     await ddb.send(new UpdateCommand({
       TableName: TABLE, Key: { pk: room, sk: me.sk }, UpdateExpression: 'SET seen = :t',
       ConditionExpression: 'attribute_exists(pk)', ExpressionAttributeValues: { ':t': true }
     })).catch(() => {});
-    // Re-check in case the last two players confirmed at the same moment.
+    // Re-read, in case the last two players confirmed at the same moment.
     const again = await loadRoom(room);
-    if (again && again.players.every((p) => p.seen)) {
-      await deleteItems(again.items);
+    if (again && again.meta.state === 'started' && again.players.every((p) => p.seen)) {
+      await resetRoom(again);
       return { ok: true, wiped: true };
     }
-    return { ok: true, wiped: false };
+    return { ok: true, wiped: !again || again.meta.state === 'lobby' };
   },
 
-  // Leave the lobby yourself, or (host only) remove someone by their public tag.
+  // Host picks the category and whether it's every player for themselves or teams.
+  async config(body) {
+    const room = cleanRoom(body.room);
+    const pid = cleanPid(body.pid);
+    const { meta, players } = await requireRoom(room);
+    if (meta.state !== 'lobby' || meta.hostId !== pid) throw new ApiError(409, 'nothost', 'Only the host can change the game settings.');
+    const category = body.category === undefined ? meta.category : String(body.category);
+    const mode = body.mode === undefined ? meta.mode : String(body.mode);
+    const teamCount = body.teamCount === undefined ? meta.teamCount : Number(body.teamCount);
+    if (!Game.CATEGORIES[category] || (mode !== 'solo' && mode !== 'teams') ||
+        !Number.isInteger(teamCount) || teamCount < 2 || teamCount > Game.TEAMS.length) {
+      throw new ApiError(400, 'bad', 'Bad settings.');
+    }
+    await ddb.send(new UpdateCommand({
+      TableName: TABLE, Key: { pk: room, sk: 'META' },
+      UpdateExpression: 'SET category = :c, #m = :m, teamCount = :t',
+      ConditionExpression: '#s = :lobby AND hostId = :pid',
+      ExpressionAttributeNames: { '#s': 'state', '#m': 'mode' },
+      ExpressionAttributeValues: { ':c': category, ':m': mode, ':t': teamCount, ':lobby': 'lobby', ':pid': pid }
+    }));
+    // Turning teams on (or changing how many) deals everyone out evenly; players can then swap.
+    if (mode === 'teams' && (meta.mode !== 'teams' || meta.teamCount !== teamCount)) {
+      await Promise.all(players.map((p, i) => ddb.send(new UpdateCommand({
+        TableName: TABLE, Key: { pk: room, sk: p.sk }, UpdateExpression: 'SET team = :t',
+        ConditionExpression: 'attribute_exists(pk)', ExpressionAttributeValues: { ':t': i % teamCount }
+      })).catch(() => {})));
+    }
+    return { ok: true };
+  },
+
+  // A player switches team while waiting in the lobby.
+  async team(body) {
+    const room = cleanRoom(body.room);
+    const pid = cleanPid(body.pid);
+    const team = Number(body.team);
+    const res = await ddb.send(new GetCommand({ TableName: TABLE, Key: { pk: room, sk: 'META' }, ConsistentRead: true }));
+    const meta = res.Item;
+    if (!meta || meta.state !== 'lobby' || meta.mode !== 'teams') throw new ApiError(409, 'closed', 'Teams can only be changed in the lobby.');
+    if (!Number.isInteger(team) || team < 0 || team >= meta.teamCount) throw new ApiError(400, 'bad', 'No such team.');
+    try {
+      await ddb.send(new UpdateCommand({
+        TableName: TABLE, Key: { pk: room, sk: 'P#' + pid }, UpdateExpression: 'SET team = :t',
+        ConditionExpression: 'attribute_exists(pk)', ExpressionAttributeValues: { ':t': team }
+      }));
+    } catch (e) {
+      if (isConditionFail(e)) throw new ApiError(403, 'notin', 'You are not in this game.');
+      throw e;
+    }
+    return { ok: true };
+  },
+
+  // Leave between rounds yourself, or (host only) remove someone by their public tag.
   async leave(body) {
     const room = cleanRoom(body.room);
     const pid = cleanPid(body.pid);
     const data = await loadRoom(room);
     if (!data) return { ok: true };
     const { meta, players, items } = data;
-    if (meta.state !== 'lobby') return { ok: true };
+    const phase = phaseOf(meta, Date.now());
+    if (phase !== 'lobby' && phase !== 'final') return { ok: true };
     const me = players.find((p) => p.sk === 'P#' + pid);
     if (!me) return { ok: true };
     let target = me;
     if (body.tag) {
+      if (phase !== 'lobby') return { ok: true };
       if (meta.hostId !== pid) throw new ApiError(403, 'nothost', 'Only the host can remove players.');
       target = players.find((p) => p.tag === body.tag);
       if (!target) return { ok: true };

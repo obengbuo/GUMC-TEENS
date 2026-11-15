@@ -24,7 +24,7 @@
 <section id="s-home" class="screen">
   <div class="card">
     <div class="logo"><span class="logo-top">BIBLE</span><span class="logo-main">Name Scramble</span></div>
-    <p class="sub" id="home-sub">Unscramble Bible names. 120 seconds. Most right wins! 🏆</p>
+    <p class="sub" id="home-sub"></p>
     <form id="name-form" autocomplete="off">
       <label for="name">Your full name</label>
       <input id="name" maxlength="40" placeholder="First and last name" autocapitalize="words" enterkeyhint="go" required>
@@ -53,8 +53,26 @@
         <button id="copy-link" class="link-chip"></button>
       </div>
     </div>
+    <div id="settings" class="settings" hidden>
+      <p class="set-label">Category</p>
+      <div id="set-cat" class="seg wrap"></div>
+      <p class="set-label">Play as</p>
+      <div id="set-mode" class="seg">
+        <button type="button" data-mode="solo">🙋 Individuals</button>
+        <button type="button" data-mode="teams">🤝 Teams</button>
+      </div>
+      <div id="set-count-wrap" hidden>
+        <p class="set-label">How many teams?</p>
+        <div id="set-count" class="seg">
+          <button type="button" data-count="2">2</button>
+          <button type="button" data-count="3">3</button>
+          <button type="button" data-count="4">4</button>
+        </div>
+      </div>
+    </div>
+    <p id="lobby-summary" class="summary" hidden></p>
     <h2 id="lobby-count">Players</h2>
-    <ul id="lobby-players" class="players"></ul>
+    <div id="lobby-players" class="roster"></div>
     <p id="lobby-status" class="status"></p>
     <button id="btn-start" class="btn primary big" hidden>Everyone's in — START! 🚀</button>
     <button id="btn-leave" class="ghost small">Leave game</button>
@@ -64,6 +82,7 @@
 <!-- COUNTDOWN -->
 <section id="s-count" class="screen">
   <p class="eyebrow">Get ready…</p>
+  <p id="count-cat" class="count-cat"></p>
   <div id="count-num" class="count-num">3</div>
 </section>
 
@@ -77,7 +96,7 @@
   <div class="bar"><div id="bar-fill"></div></div>
   <div class="chips"><span id="chip-streak" class="chip" hidden></span><span id="chip-rank" class="chip" hidden></span></div>
   <div class="play">
-    <p class="prompt">Who is this?</p>
+    <p class="prompt" id="prompt">Who is this?</p>
     <div id="tiles" class="tiles" aria-live="polite"></div>
     <div id="choices" class="choices"></div>
     <div id="cheer" class="cheer"></div>
@@ -96,11 +115,13 @@
   <div class="card wide">
     <h1 id="res-title">Final Scores</h1>
     <p id="res-me" class="sub"></p>
+    <div id="team-board" class="team-board" hidden></div>
     <div id="podium" class="podium"></div>
     <ol id="res-list" class="results"></ol>
     <p class="verse">“Whatever you do, work at it with all your heart, as working for the Lord.” <b>Colossians 3:23</b></p>
-    <p class="wiped">🧹 This round's names and scores have been erased — nothing is saved.</p>
-    <button id="btn-again" class="btn primary">Play again 🔁</button>
+    <p class="wiped">🧹 This round's scores are erased once everyone has seen them — nothing is saved.</p>
+    <button id="btn-again" class="btn primary">Play another round 🔁</button>
+    <button id="btn-quit" class="ghost small">Leave game</button>
   </div>
 </section>
 

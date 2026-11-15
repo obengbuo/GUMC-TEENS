@@ -17,14 +17,125 @@
     'Jehoshaphat Rehoboam Jeroboam Melchizedek Nebuchadnezzar Belshazzar Shadrach Meshach Abednego Zerubbabel Mephibosheth Ahasuerus Bartimaeus Onesimus Epaphroditus Tychicus Eutychus Ananias Sapphira Gamaliel Jochebed Zipporah Jethro Potiphar Issachar Zebulun Naphtali Manasseh Ephraim Athaliah Sennacherib Archippus Trophimus Sosthenes Demetrius Zelophehad Ahithophel Abimelech Elimelech Ichabod Keturah Artaxerxes Zedekiah Jehoiakim Hilkiah Shealtiel Quirinius'
   ];
 
-  // Sorted easiest -> hardest (tier first, then length).
-  var NAMES = [];
-  TIERS.forEach(function (list, t) {
-    list.split(' ').forEach(function (n) {
-      NAMES.push({ name: n, d: (t + 1) * 10 + Math.min(n.length, 14) * 0.6 });
+  var BOOK_TIERS = [
+    'Genesis Exodus Psalms Proverbs Matthew Mark Luke John Acts Romans Ruth Job Jonah Daniel Esther Revelation James Joshua Judges Kings',
+    'Numbers Samuel Isaiah Jeremiah Ezekiel Peter Hebrews Timothy Titus Jude Joel Amos Ezra Micah Hosea Galatians Ephesians Corinthians',
+    'Leviticus Deuteronomy Chronicles Nehemiah Ecclesiastes Lamentations Obadiah Nahum Habakkuk Zephaniah Haggai Zechariah Malachi Philippians Colossians Thessalonians Philemon'
+  ];
+
+  var PLACE_TIERS = [
+    'Eden Egypt Israel Jericho Bethlehem Nazareth Jerusalem Babylon Galilee Jordan Sinai Canaan Rome Judea Zion',
+    'Bethany Capernaum Damascus Nineveh Samaria Sodom Gomorrah Calvary Golgotha Gethsemane Corinth Ephesus Antioch Athens Cana Hebron Bethel Ararat Babel Moab Edom Goshen Tarsus Emmaus Patmos Carmel Philippi Galatia Cyprus Malta Joppa Shiloh',
+    'Thessalonica Colossae Laodicea Philadelphia Smyrna Pergamum Thyatira Sardis Macedonia Caesarea Bethsaida Decapolis Gilead Bashan Beersheba Shechem Gibeon Mizpah Peniel Horeb Nebo Tarshish Haran Midian Persia Assyria Lystra Derbe Iconium Berea Troas Miletus Crete Ziklag Endor Gilgal Ramah Lebanon Tyre Sidon Zarephath Siloam Bethesda Kidron Hermon Tabor Moriah Pisgah Gaza Ashdod Ekron Gath Jezreel'
+  ];
+
+  // "Who am I?" clues: [name, clue], grouped easiest -> hardest.
+  var CLUE_TIERS = [
+    [
+      ['Noah', 'I built an ark and filled it with animals.'],
+      ['Moses', 'I led Israel out of Egypt and through the Red Sea.'],
+      ['David', 'I beat a giant with a sling and a stone.'],
+      ['Jonah', 'I spent three days inside a great fish.'],
+      ['Daniel', 'I was thrown into a den of lions.'],
+      ['Adam', 'I was the very first man.'],
+      ['Eve', 'I was the first woman.'],
+      ['Mary', 'An angel told me I would be the mother of Jesus.'],
+      ['Samson', 'My great strength was tied to my long hair.'],
+      ['Goliath', 'I was a giant Philistine warrior beaten by a shepherd boy.'],
+      ['Joseph', 'My father gave me a coat of many colours.'],
+      ['Abraham', 'God promised me descendants as many as the stars.'],
+      ['Peter', 'I walked on water toward Jesus, then began to sink.'],
+      ['Zacchaeus', 'I climbed a sycamore tree to see Jesus.'],
+      ['Judas', 'I betrayed Jesus for thirty pieces of silver.'],
+      ['Solomon', 'I asked God for wisdom and built the temple.']
+    ],
+    [
+      ['Esther', 'I became queen and risked my life to save my people.'],
+      ['Ruth', 'I told Naomi, "Where you go, I will go."'],
+      ['Joshua', 'I led the march around Jericho until the walls fell.'],
+      ['Elijah', 'I called down fire from heaven on Mount Carmel.'],
+      ['Paul', 'I met Jesus in a blinding light on the road to Damascus.'],
+      ['Thomas', 'I would not believe Jesus had risen until I saw His wounds.'],
+      ['Lazarus', 'Jesus raised me from the dead after four days in the tomb.'],
+      ['Sarah', 'I laughed when I heard I would have a son in my old age.'],
+      ['Isaac', 'My father Abraham nearly sacrificed me on a mountain.'],
+      ['Jacob', 'I dreamed of a stairway reaching up to heaven.'],
+      ['Esau', 'I sold my birthright for a bowl of stew.'],
+      ['Cain', 'I killed my brother Abel.'],
+      ['Samuel', 'As a boy I heard God call my name in the night.'],
+      ['Gideon', 'I defeated an army with just 300 men, trumpets and jars.'],
+      ['Delilah', 'I tricked Samson into telling me the secret of his strength.'],
+      ['Martha', 'I was busy serving while my sister sat at Jesus\' feet.'],
+      ['Matthew', 'I was a tax collector before I followed Jesus.'],
+      ['Pilate', 'I washed my hands at the trial of Jesus.'],
+      ['Miriam', 'I watched over my baby brother Moses as he floated in a basket.'],
+      ['Aaron', 'I was Moses\' brother and Israel\'s first high priest.'],
+      ['Hannah', 'I prayed for a son and named him Samuel.'],
+      ['John', 'I baptised Jesus in the Jordan River.'],
+      ['Stephen', 'I was the first Christian martyr, stoned for my faith.']
+    ],
+    [
+      ['Methuselah', 'I lived 969 years, longer than anyone else in the Bible.'],
+      ['Enoch', 'I walked with God, and then God took me away.'],
+      ['Rahab', 'I hid Israelite spies in Jericho and hung a scarlet cord from my window.'],
+      ['Deborah', 'I was a prophetess and judge who went into battle with Barak.'],
+      ['Nicodemus', 'I came to Jesus at night and heard, "You must be born again."'],
+      ['Barnabas', 'My name means "son of encouragement" and I travelled with Paul.'],
+      ['Naaman', 'I was healed of leprosy after dipping seven times in the Jordan.'],
+      ['Elisha', 'I received a double portion of Elijah\'s spirit.'],
+      ['Boaz', 'I let Ruth gather grain in my field, and later married her.'],
+      ['Absalom', 'I rebelled against my father David and was caught in the branches of an oak.'],
+      ['Nehemiah', 'I rebuilt the walls of Jerusalem.'],
+      ['Jezebel', 'I was the wicked queen married to King Ahab.'],
+      ['Lot', 'My wife looked back and became a pillar of salt.'],
+      ['Caleb', 'Joshua and I were the only two spies who trusted God to give us the land.'],
+      ['Bartimaeus', 'I was a blind beggar near Jericho who shouted for Jesus until He healed me.'],
+      ['Philip', 'I explained the Scriptures to an Ethiopian official in his chariot.'],
+      ['Silas', 'I sang hymns in prison with Paul when an earthquake shook the doors open.'],
+      ['Lydia', 'I sold purple cloth and was baptised in Philippi.'],
+      ['Priscilla', 'My husband Aquila and I made tents alongside Paul.'],
+      ['Mordecai', 'I raised my cousin Esther and refused to bow to Haman.'],
+      ['Nebuchadnezzar', 'I had three men thrown into a blazing furnace.'],
+      ['Melchizedek', 'I was king of Salem and a priest who blessed Abraham.'],
+      ['Jethro', 'I was Moses\' father-in-law and advised him to share his workload.'],
+      ['Eutychus', 'I fell asleep during Paul\'s long sermon and fell out of a window.'],
+      ['Gamaliel', 'I was a respected Pharisee who taught Paul.'],
+      ['Mephibosheth', 'I was Jonathan\'s son, lame in both feet, and ate at King David\'s table.'],
+      ['Onesimus', 'I was a runaway slave Paul sent back with a letter to Philemon.'],
+      ['Ananias', 'God sent me to restore Saul\'s sight in Damascus.'],
+      ['Balaam', 'My donkey spoke to me.'],
+      ['Hezekiah', 'God added fifteen years to my life.'],
+      ['Josiah', 'I became king when I was eight years old.'],
+      ['Jochebed', 'I hid my baby son Moses in a basket on the Nile.'],
+      ['Uriah', 'I was Bathsheba\'s husband, sent to the front line by King David.']
+    ]
+  ];
+
+  // Builds a list sorted easiest -> hardest (tier first, then length).
+  function ranked(tiers, isClue) {
+    var out = [];
+    tiers.forEach(function (list, t) {
+      (isClue ? list : list.split(' ')).forEach(function (item) {
+        var name = isClue ? item[0] : item;
+        out.push({ name: name, clue: isClue ? item[1] : null, d: (t + 1) * 10 + (isClue ? 0 : Math.min(name.length, 14) * 0.6) });
+      });
     });
-  });
-  NAMES.sort(function (a, b) { return a.d - b.d || (a.name < b.name ? -1 : 1); });
+    return out.sort(function (a, b) { return a.d - b.d || (a.name < b.name ? -1 : 1); });
+  }
+
+  var CATEGORIES = {
+    characters: { label: 'Bible Characters', emoji: '🧔', prompt: 'Who is this?', items: ranked(TIERS) },
+    books: { label: 'Books of the Bible', emoji: '📖', prompt: 'Which book of the Bible?', items: ranked(BOOK_TIERS) },
+    places: { label: 'Bible Places', emoji: '🗺️', prompt: 'Which place is this?', items: ranked(PLACE_TIERS) },
+    whoami: { label: 'Who Am I?', emoji: '🕵️', prompt: 'Who am I?', clue: true, items: ranked(CLUE_TIERS, true) }
+  };
+  var TEAMS = [
+    { name: 'Lions', emoji: '🦁', color: '#ffd23f' },
+    { name: 'Eagles', emoji: '🦅', color: '#2fe6de' },
+    { name: 'Doves', emoji: '🕊️', color: '#ff7ab6' },
+    { name: 'Lambs', emoji: '🐑', color: '#3ddc84' }
+  ];
+  var NAMES = CATEGORIES.characters.items;
 
   function hash(str) {
     var h = 2166136261 >>> 0;
@@ -83,46 +194,46 @@
     return out.join('');
   }
 
-  function createGame(seed) {
+  function createGame(seed, categoryId) {
     seed = String(seed);
+    var cat = CATEGORIES[categoryId] || CATEGORIES.characters;
+    var items = cat.items, N = items.length;
     // Roughly easiest -> hardest, with a little per-game jitter so no two games match.
     var jitter = rng(seed + '|order');
-    var order = NAMES.map(function (n, rank) { return { name: n.name, key: rank + jitter() * 9 }; })
-      .sort(function (a, b) { return a.key - b.key; })
-      .map(function (n) { return n.name; });
+    var spread = Math.max(3, 9 * N / 171);
+    var order = items.map(function (n, rank) { return { name: n.name, clue: n.clue, key: rank + jitter() * spread }; })
+      .sort(function (a, b) { return a.key - b.key; });
+    var names = order.map(function (n) { return n.name; });
+    // How far up the ladder each question climbs: big lists skip ahead, small lists use every entry.
+    var step = Math.max(1, Math.floor((N - 5) / 45));
     var cache = {};
 
     function question(index) {
       if (cache[index]) return cache[index];
       var rand = rng(seed + '|q' + index);
       var level = levelFor(index);
-      // Warm-up walks the easiest names; after that each question jumps ~3 names up the ladder.
-      var pos = index < 5 ? index : 5 + (index - 5) * 3 + Math.floor(rand() * 3);
-      if (pos >= order.length) pos = order.length - 1 - ((index * 7) % 40);
-      var answer = order[pos];
+      var pos = index < 5 ? index : 5 + (index - 5) * step + Math.floor(rand() * step);
+      if (pos >= N) pos = N - 1 - ((index * 7) % Math.min(40, N));
+      var answer = names[pos];
 
       // Higher levels => more look-alike wrong answers (same length, shared letters).
-      var lookalikes = level <= 1 ? 0 : level <= 5 ? 1 : level <= 10 ? 2 : 3;
-      var others = order.filter(function (n) { return n !== answer; });
+      var lookalikes = cat.clue || level <= 1 ? 0 : level <= 5 ? 1 : level <= 10 ? 2 : 3;
+      var others = names.filter(function (n) { return n !== answer; });
       var bySimilarity = others.map(function (n) {
         return { n: n, s: Math.abs(n.length - answer.length) * 3 - sharedLetters(n, answer) + rand() * 2 };
       }).sort(function (a, b) { return a.s - b.s; }).map(function (x) { return x.n; });
 
       var wrong = shuffle(bySimilarity.slice(0, 7), rand).slice(0, lookalikes);
-      var lo = Math.max(0, pos - 25), hi = Math.min(order.length, pos + 25);
-      var nearby = shuffle(order.slice(lo, hi), rand);
+      var reach = cat.clue ? 14 : 25;
+      var nearby = shuffle(names.slice(Math.max(0, pos - reach), Math.min(N, pos + reach)), rand);
       for (var i = 0; wrong.length < 3 && i < nearby.length; i++) {
         if (nearby[i] !== answer && wrong.indexOf(nearby[i]) < 0) wrong.push(nearby[i]);
       }
 
       var choices = shuffle([answer].concat(wrong), rand);
-      var q = {
-        index: index,
-        level: level,
-        scrambled: scramble(answer, level, rand),
-        choices: choices,
-        answer: choices.indexOf(answer)
-      };
+      var q = { index: index, level: level, choices: choices, answer: choices.indexOf(answer) };
+      if (cat.clue) q.clue = order[pos].clue;
+      else q.scrambled = scramble(answer, level, rand);
       cache[index] = q;
       return q;
     }
@@ -137,5 +248,6 @@
     return { question: question, score: score };
   }
 
-  return { createGame: createGame, levelFor: levelFor, NAMES: NAMES.map(function (n) { return n.name; }), ROUND_MS: ROUND_MS, POINTS: POINTS };
+  return { createGame: createGame, levelFor: levelFor, CATEGORIES: CATEGORIES, TEAMS: TEAMS,
+    NAMES: NAMES.map(function (n) { return n.name; }), ROUND_MS: ROUND_MS, POINTS: POINTS };
 });
