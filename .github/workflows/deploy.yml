@@ -1,0 +1,20 @@
+name: Deploy to AWS
+# Run by hand from the Actions tab. Needs two repository secrets:
+#   AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: AWS region
+        default: us-east-1
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ inputs.region }}
+      - run: ./deploy.sh "${{ inputs.region }}"

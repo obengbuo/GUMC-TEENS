@@ -1,0 +1,74 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: 'Fredoka'; src: url('../../app/public/fredoka.woff2') format('woff2'); font-weight: 300 700; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 720px; height: 720px; overflow: hidden; background: #140b3a; font-family: 'Fredoka', sans-serif; }
+.stage { position: absolute; inset: 0; background: radial-gradient(60% 60% at 50% 45%, #3a1690 0%, #140b3a 72%); }
+.blob { position: absolute; border-radius: 50%; filter: blur(50px); opacity: 0; }
+.b1 { width: 300px; height: 300px; background: #ff4f9a; left: 110px; top: 130px; animation: blob 7s ease-in-out forwards; }
+.b2 { width: 280px; height: 280px; background: #2fe6de; right: 110px; bottom: 150px; animation: blob 7s 0.3s ease-in-out forwards; }
+@keyframes blob { 15% { opacity: 0.4; } 85% { opacity: 0.4; transform: translate(30px, -20px) scale(1.2); } 100% { opacity: 0; transform: translate(30px, -20px) scale(1.2); } }
+.star { position: absolute; width: 8px; height: 8px; background: #fff; border-radius: 50%; opacity: 0; animation: twinkle 1.6s ease-in-out infinite; }
+@keyframes twinkle { 50% { opacity: 0.9; transform: scale(1.6); } }
+
+.row { position: absolute; left: 0; right: 0; display: flex; justify-content: center; gap: 12px; }
+.row.top { top: 196px; }
+.tile {
+  width: 92px; height: 106px; border-radius: 20px; display: grid; place-items: center; font-size: 64px; font-weight: 700; color: #140b3a;
+  background: #fff; box-shadow: 0 9px 0 #b8b0e0; opacity: 0;
+}
+.tile.y { background: #ffd23f; box-shadow: 0 9px 0 #c99a00; }
+.tile.c { background: #2fe6de; box-shadow: 0 9px 0 #17a8a2; }
+/* Tiles drop in scrambled (B L I B E), jiggle, then slide into B I B L E. --dx is each tile's trip home. */
+.tile { animation: drop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4) forwards, jig 0.5s 0.9s ease-in-out 2, home 0.7s 2s cubic-bezier(0.6, -0.3, 0.3, 1.4) forwards, bye 0.5s 6.4s ease-in forwards; animation-delay: calc(var(--i) * 0.09s), 0.9s, 2s, 6.4s; }
+@keyframes drop { from { opacity: 0; transform: translateY(-260px) rotate(-40deg); } to { opacity: 1; transform: translateY(0) rotate(var(--r)); } }
+@keyframes jig { 0%, 100% { transform: rotate(var(--r)); } 50% { transform: rotate(calc(var(--r) * -1.6)) translateY(-10px); } }
+@keyframes home { from { transform: rotate(var(--r)); } 50% { transform: translate(calc(var(--dx) * 0.5), -70px) rotate(calc(var(--r) * -2)); } to { transform: translateX(var(--dx)) rotate(0deg); } }
+@keyframes bye { from { opacity: 1; transform: translateX(var(--dx)); } to { opacity: 0; transform: translateX(var(--dx)) scale(1.5); } }
+
+.title { position: absolute; left: 0; right: 0; top: 330px; text-align: center; font-size: 96px; font-weight: 700; line-height: 1;
+  background: linear-gradient(90deg, #ffd23f, #ff4f9a 55%, #2fe6de); -webkit-background-clip: text; color: transparent;
+  opacity: 0; animation: boom 0.7s 2.8s cubic-bezier(0.2, 0.9, 0.3, 1.5) forwards, bye2 0.5s 6.4s ease-in forwards; }
+.title span { display: block; }
+@keyframes boom { from { opacity: 0; transform: scale(0.2) rotate(-8deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
+@keyframes bye2 { to { opacity: 0; transform: scale(1.5); } }
+.flash { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px; border-radius: 50%; border: 10px solid #ffd23f; opacity: 0;
+  animation: ring 0.9s 2.75s ease-out forwards; }
+@keyframes ring { from { opacity: 0.9; transform: scale(1); } to { opacity: 0; transform: scale(24); } }
+
+.pills { position: absolute; left: 0; right: 0; top: 566px; display: flex; justify-content: center; gap: 14px; }
+.pill { padding: 12px 24px; border-radius: 999px; font-size: 30px; font-weight: 600; color: #fff; background: rgba(255,255,255,0.16); border: 2px solid rgba(255,255,255,0.3);
+  opacity: 0; animation: pill 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.5) forwards, bye2 0.5s 6.4s ease-in forwards; }
+.pill:nth-child(1) { animation-delay: 3.9s, 6.4s; }
+.pill:nth-child(2) { animation-delay: 4.3s, 6.4s; background: #ffd23f; color: #140b3a; border-color: #ffd23f; }
+.pill:nth-child(3) { animation-delay: 4.7s, 6.4s; }
+@keyframes pill { from { opacity: 0; transform: translateY(40px) scale(0.6); } to { opacity: 1; transform: none; } }
+.tag { position: absolute; left: 0; right: 0; top: 96px; text-align: center; font-size: 30px; font-weight: 600; letter-spacing: 0.3em; color: #cfc6ff;
+  opacity: 0; animation: pill 0.6s 0.2s ease-out forwards, bye2 0.5s 6.4s ease-in forwards; }
+</style></head>
+<body><div class="stage">
+  <div class="blob b1"></div><div class="blob b2"></div>
+  <div id="stars"></div>
+  <div class="tag">GUMC TEENS</div>
+  <div class="row top">
+    <div class="tile y" style="--i:0;--r:-7deg;--dx:0px">B</div>
+    <div class="tile c" style="--i:1;--r:6deg;--dx:208px">L</div>
+    <div class="tile"   style="--i:2;--r:-5deg;--dx:-104px">I</div>
+    <div class="tile y" style="--i:3;--r:8deg;--dx:-104px">B</div>
+    <div class="tile c" style="--i:4;--r:-6deg;--dx:0px">E</div>
+  </div>
+  <div class="flash"></div>
+  <div class="title"><span>Name</span><span>Scramble</span></div>
+  <div class="pills"><div class="pill">Unscramble</div><div class="pill">120 seconds</div><div class="pill">Win!</div></div>
+</div>
+<script>
+  // Fixed star positions so every render is identical.
+  var pts = [[60,80],[650,120],[120,520],[610,600],[330,60],[40,330],[680,360],[220,660],[520,40],[470,680],[90,220],[640,250]];
+  pts.forEach(function (p, i) {
+    var s = document.createElement('div'); s.className = 'star';
+    s.style.left = p[0] + 'px'; s.style.top = p[1] + 'px'; s.style.animationDelay = (i * 0.23) + 's';
+    document.getElementById('stars').appendChild(s);
+  });
+</script>
+</body></html>

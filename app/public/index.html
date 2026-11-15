@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#140b3a">
+<title>Bible Name Scramble · GUMC Teens</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ffd23f'/%3E%3Ctext x='32' y='46' font-size='40' font-weight='700' text-anchor='middle' font-family='Arial' fill='%23140b3a'%3EB%3C/text%3E%3C/svg%3E">
+<link rel="preload" href="/fredoka.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="bg" aria-hidden="true"><i></i><i></i><i></i></div>
+<canvas id="confetti" aria-hidden="true"></canvas>
+<button id="mute" class="icon-btn" aria-label="Sound on or off" hidden>🔊</button>
+
+<!-- INTRO -->
+<section id="s-intro" class="screen active">
+  <video id="intro-video" src="/intro.mp4" muted playsinline preload="auto"></video>
+  <button id="skip" class="ghost">Skip ›</button>
+</section>
+
+<!-- HOME -->
+<section id="s-home" class="screen">
+  <div class="card">
+    <div class="logo"><span class="logo-top">BIBLE</span><span class="logo-main">Name Scramble</span></div>
+    <p class="sub" id="home-sub">Unscramble Bible names. 120 seconds. Most right wins! 🏆</p>
+    <form id="name-form" autocomplete="off">
+      <label for="name">Your full name</label>
+      <input id="name" maxlength="40" placeholder="First and last name" autocapitalize="words" enterkeyhint="go" required>
+      <div id="join-fields">
+        <label for="code">Game code</label>
+        <input id="code" maxlength="4" placeholder="ABCD" autocapitalize="characters" inputmode="text" class="code-input">
+      </div>
+      <p id="home-err" class="err" role="alert"></p>
+      <button type="submit" id="btn-join" class="btn primary">Join game 🎮</button>
+      <div class="or" id="or"><span>or</span></div>
+      <button type="button" id="btn-create" class="btn secondary">Host a new game ✨</button>
+    </form>
+  </div>
+  <p class="foot">GUMC Teens · no sign-ups, nothing saved</p>
+</section>
+
+<!-- LOBBY -->
+<section id="s-lobby" class="screen">
+  <div class="card wide">
+    <p class="eyebrow">Game code</p>
+    <div class="room-code" id="room-code">----</div>
+    <div class="share">
+      <div id="qr" class="qr" aria-label="QR code to join"></div>
+      <div class="share-text">
+        <p>Scan to join, or open this link and type the code:</p>
+        <button id="copy-link" class="link-chip"></button>
+      </div>
+    </div>
+    <h2 id="lobby-count">Players</h2>
+    <ul id="lobby-players" class="players"></ul>
+    <p id="lobby-status" class="status"></p>
+    <button id="btn-start" class="btn primary big" hidden>Everyone's in — START! 🚀</button>
+    <button id="btn-leave" class="ghost small">Leave game</button>
+  </div>
+</section>
+
+<!-- COUNTDOWN -->
+<section id="s-count" class="screen">
+  <p class="eyebrow">Get ready…</p>
+  <div id="count-num" class="count-num">3</div>
+</section>
+
+<!-- GAME -->
+<section id="s-game" class="screen">
+  <div class="hud">
+    <div class="hud-item"><span class="hud-label">Score</span><span id="hud-score" class="hud-val">0</span></div>
+    <div class="timer-wrap"><div id="hud-time" class="timer">120</div></div>
+    <div class="hud-item right"><span class="hud-label">Level</span><span id="hud-level" class="hud-val">1</span></div>
+  </div>
+  <div class="bar"><div id="bar-fill"></div></div>
+  <div class="chips"><span id="chip-streak" class="chip" hidden></span><span id="chip-rank" class="chip" hidden></span></div>
+  <div class="play">
+    <p class="prompt">Who is this?</p>
+    <div id="tiles" class="tiles" aria-live="polite"></div>
+    <div id="choices" class="choices"></div>
+    <div id="cheer" class="cheer"></div>
+  </div>
+</section>
+
+<!-- TALLY -->
+<section id="s-tally" class="screen">
+  <div class="count-num small">⏰</div>
+  <h1>Time's up!</h1>
+  <p class="sub">Counting everyone's points…</p>
+</section>
+
+<!-- RESULTS -->
+<section id="s-results" class="screen">
+  <div class="card wide">
+    <h1 id="res-title">Final Scores</h1>
+    <p id="res-me" class="sub"></p>
+    <div id="podium" class="podium"></div>
+    <ol id="res-list" class="results"></ol>
+    <p class="verse">“Whatever you do, work at it with all your heart, as working for the Lord.” <b>Colossians 3:23</b></p>
+    <p class="wiped">🧹 This round's names and scores have been erased — nothing is saved.</p>
+    <button id="btn-again" class="btn primary">Play again 🔁</button>
+  </div>
+</section>
+
+<div id="toast" class="toast" role="status"></div>
+<script src="/qrcode.js"></script>
+<script src="/game.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

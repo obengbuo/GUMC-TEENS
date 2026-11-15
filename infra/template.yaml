@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Bible Name Scramble - one Lambda (Function URL) + one on-demand DynamoDB table. Scales to zero.
+
+Resources:
+  GamesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      # Safety net only: the app deletes each game itself as soon as scores have been shown.
+      TimeToLiveSpecification: { AttributeName: ttl, Enabled: true }
+
+  GameRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: games-table
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchWriteItem
+                Resource: !GetAtt GamesTable.Arn
+
+  GameFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt GameRole.Arn
+      MemorySize: 512
+      Timeout: 10
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref GamesTable
+      # Placeholder - deploy.sh uploads the real app right after the stack is created.
+      Code:
+        ZipFile: |
+          exports.handler = async () => ({ statusCode: 200, body: 'Deploying... refresh in a moment.' });
+
+  GameLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GameFunction}
+      RetentionInDays: 7
+
+  GameUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt GameFunction.Arn
+      AuthType: NONE
+
+  PublicUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GameFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
+  PublicInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GameFunction
+      Action: lambda:InvokeFunction
+      Principal: '*'
+      InvokedViaFunctionUrl: true
+
+Outputs:
+  GameUrl:
+    Description: Share this link with the teens
+    Value: !GetAtt GameUrl.FunctionUrl
+  FunctionName:
+    Value: !Ref GameFunction
