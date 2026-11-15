@@ -245,19 +245,27 @@
         $('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
       } catch (e) { $('qr').hidden = true; }
     }
+    // Update the list in place so names don't flicker each time the lobby refreshes.
     var list = $('lobby-players');
     var before = list.children.length;
-    list.textContent = '';
+    var existing = {};
+    Array.prototype.forEach.call(list.children, function (li) { existing[li.dataset.tag] = li; });
     st.players.forEach(function (p) {
-      var li = el('li', p.me ? 'me' : '', (p.host ? '👑 ' : '') + p.name + (p.me ? ' (you)' : ''));
+      var li = existing[p.tag];
+      delete existing[p.tag];
+      var sig = (p.host ? 'h' : '') + (st.hostIsMe ? 'k' : '');
+      if (li && li.dataset.sig === sig) return;
+      if (!li) { li = el('li', p.me ? 'me' : ''); li.dataset.tag = p.tag; list.appendChild(li); }
+      li.dataset.sig = sig;
+      li.textContent = (p.host ? '👑 ' : '') + p.name + (p.me ? ' (you)' : '');
       if (st.hostIsMe && !p.me) {
         var k = el('button', 'kick', '✕');
         k.setAttribute('aria-label', 'Remove ' + p.name);
         k.onclick = function () { api('leave', { room: session.room, pid: session.pid, tag: p.tag }).catch(function () {}); li.remove(); };
         li.appendChild(k);
       }
-      list.appendChild(li);
     });
+    Object.keys(existing).forEach(function (tag) { existing[tag].remove(); });
     if (before && st.players.length > before) sfx.join();
     var n = st.players.length;
     $('lobby-count').textContent = n + (n === 1 ? ' player' : ' players') + ' in';
@@ -297,7 +305,7 @@
     $('hud-level').textContent = q.level;
     var tiles = $('tiles');
     tiles.textContent = '';
-    tiles.classList.toggle('long', q.scrambled.length > 8);
+    tiles.style.setProperty('--n', q.scrambled.length);
     q.scrambled.split('').forEach(function (ch, i) {
       var t = el('span', 'tile', ch);
       t.style.animationDelay = (i * 35) + 'ms';

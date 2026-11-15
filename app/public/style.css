@@ -134,9 +134,9 @@ input:focus { border-color: var(--yellow); }
   max-width: 100%; padding: 8px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.14); font-size: 0.85rem;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; font-weight: 500;
 }
-.players { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.players { list-style: none; margin: 0; padding: 2px; display: flex; flex-wrap: wrap; gap: 6px; max-height: 32vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .players li {
-  display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; font-weight: 600;
+  display: flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px; font-weight: 600; font-size: 0.92rem;
   background: rgba(255, 255, 255, 0.14); animation: pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.5);
 }
 .players li.me { background: var(--cyan); color: var(--ink); }
@@ -174,16 +174,17 @@ input:focus { border-color: var(--yellow); }
 #chip-streak { background: linear-gradient(90deg, #ff7a18, var(--pink)); animation: pop 0.3s; }
 .play { flex: 1; width: 100%; display: flex; flex-direction: column; justify-content: center; position: relative; padding-bottom: 8px; }
 .prompt { text-align: center; color: var(--muted); margin: 0 0 12px; font-size: 1.05rem; font-weight: 500; }
-.tiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: 64px; margin-bottom: 26px; }
+.tiles { --n: 6; display: flex; justify-content: center; gap: 5px; min-height: 68px; align-items: center; margin-bottom: 26px; }
 .tile {
-  --s: clamp(30px, calc((100vw - 60px) / 8), 58px);
-  width: var(--s); height: calc(var(--s) * 1.15); display: grid; place-items: center; border-radius: 12px;
-  background: #fff; color: var(--ink); font-weight: 700; font-size: calc(var(--s) * 0.62);
-  box-shadow: 0 5px 0 #b8b0e0; animation: tile-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.5) backwards;
+  /* sized so even a 14-letter name fits on one line of a phone */
+  --s: min(58px, calc((min(100vw, 640px) - 34px - (var(--n) - 1) * 5px) / var(--n)));
+  flex: none;
+  width: var(--s); height: calc(var(--s) * 1.15); display: grid; place-items: center; border-radius: calc(var(--s) * 0.22);
+  background: #fff; color: var(--ink); font-weight: 700; font-size: calc(var(--s) * 0.64);
+  box-shadow: 0 4px 0 #b8b0e0; animation: tile-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.5) backwards;
 }
-.tiles.long .tile { --s: clamp(22px, calc((100vw - 60px) / 9), 46px); border-radius: 9px; }
-.tile:nth-child(3n + 1) { background: var(--yellow); box-shadow: 0 5px 0 #c99a00; }
-.tile:nth-child(3n + 2) { background: var(--cyan); box-shadow: 0 5px 0 #17a8a2; }
+.tile:nth-child(3n + 1) { background: var(--yellow); box-shadow: 0 4px 0 #c99a00; }
+.tile:nth-child(3n + 2) { background: var(--cyan); box-shadow: 0 4px 0 #17a8a2; }
 .tile:nth-child(odd) { transform: rotate(-3deg); }
 .tile:nth-child(even) { transform: rotate(3deg); }
 @keyframes tile-in { from { transform: translateY(-40px) rotate(-30deg) scale(0.3); opacity: 0; } }
